@@ -1,0 +1,27 @@
+name: Public Hosted Actions Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/public-hosted-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Prove public hosted runner works
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PUBLIC_HOSTED_ACTIONS_OK"
+          uname -a
+          free -h
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
