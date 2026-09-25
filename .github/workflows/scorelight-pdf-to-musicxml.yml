@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      test_conversion:
+        description: "Convert the official Audiveris test score end-to-end"
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
     paths:
@@ -63,6 +68,7 @@ jobs:
         env:
           MANUAL_PDF_PATH: ${{ inputs.pdf_path || '' }}
           INSTALL_ONLY: ${{ inputs.test_install || 'false' }}
+          TEST_CONVERSION: ${{ inputs.test_conversion || 'false' }}
           BEFORE_SHA: ${{ github.event.before || '' }}
         run: |
           set -euo pipefail
@@ -71,11 +77,16 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             python3 scorelight/scripts/convert.py \
               --audiveris "$AUDIVERIS_CLI" --output "$output" \
-              --event push --before "$BEFORE_SHA" --after "$GITHUB_SHA"
+              --event push --before "$BEFORE_SHA" --after "$GITHUB_SHA" \
+              --test-conversion-if-empty
           elif [[ "$INSTALL_ONLY" == "true" ]]; then
             python3 scorelight/scripts/convert.py \
               --audiveris "$AUDIVERIS_CLI" --output "$output" \
               --event manual --test-install
+          elif [[ "$TEST_CONVERSION" == "true" ]]; then
+            python3 scorelight/scripts/convert.py \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --event manual --test-conversion
           else
             python3 scorelight/scripts/convert.py \
               --audiveris "$AUDIVERIS_CLI" --output "$output" \
