@@ -1,0 +1,113 @@
+name: "ScoreLight - PDF to MusicXML"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pdf_path:
+        description: "Existing PDF path, e.g. scorelight/input/my-score.pdf"
+        required: false
+        type: string
+      test_install:
+        description: "Test Audiveris installation only (no PDF needed)"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [main]
+    paths:
+      - "scorelight/input/*.pdf"
+      - "scorelight/scripts/**"
+      - ".github/workflows/scorelight-pdf-to-musicxml.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scorelight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  convert:
+    name: "Convert PDF to MusicXML using Audiveris"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout public score files
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Unpack official Audiveris (no apt-get)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/audiveris"
+          deb="$RUNNER_TEMP/audiveris.deb"
+          url="https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb"
+          curl --fail --silent --show-error --location --retry 3 --connect-timeout 30 "$url" --output "$deb"
+          dpkg-deb --info "$deb" > /dev/null
+          dpkg-deb --extract "$deb" "$RUNNER_TEMP/audiveris"
+          launcher="$RUNNER_TEMP/audiveris/opt/audiveris/bin/Audiveris"
+          if [[ ! -f "$launcher" ]]; then
+            echo "::error::Audiveris launcher not found in the downloaded package."
+            find "$RUNNER_TEMP/audiveris" -maxdepth 5 -type f -iname '*audiveris*' | head
+            exit 1
+          fi
+          chmod +x "$launcher"
+          echo "AUDIVERIS_CLI=$launcher" >> "$GITHUB_ENV"
+
+      - name: Check Audiveris and convert newly uploaded PDFs
+        id: conversion
+        shell: bash
+        env:
+          MANUAL_PDF_PATH: ${{ inputs.pdf_path || '' }}
+          INSTALL_ONLY: ${{ inputs.test_install || 'false' }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/scorelight-results"
+          mkdir -p "$output"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            python3 scorelight/scripts/convert.py \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --event push --before "$BEFORE_SHA" --after "$GITHUB_SHA"
+          elif [[ "$INSTALL_ONLY" == "true" ]]; then
+            python3 scorelight/scripts/convert.py \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --event manual --test-install
+          else
+            python3 scorelight/scripts/convert.py \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --event manual --path "$MANUAL_PDF_PATH"
+          fi
+          if [[ -d "$output/musicxml" ]] && compgen -G "$output/musicxml/*.musicxml" >/dev/null; then
+            echo "has_results=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_results=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload converted MusicXML ZIP (one-day retention)
+        if: steps.conversion.outputs.has_results == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorelight-musicxml-${{ github.run_number }}
+          path: ${{ runner.temp }}/scorelight-results/musicxml/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
+
+      - name: Android download instructions
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## ScoreLight - PDF to MusicXML"
+            if [[ -d "$RUNNER_TEMP/scorelight-results/musicxml" ]]; then
+              echo "MusicXML is ready. Download the artifact ZIP from this workflow run, unzip it on Android and import the .musicxml file into PuddleLoom ScoreLight."
+            else
+              echo "Audiveris passed its installation check. Upload a score PDF into scorelight/input/ to trigger conversion."
+            fi
+            echo ""
+            echo "**Warning:** PDFs uploaded into this public repo remain public in Git history, even after deletion. Only upload scores you may legally publish."
+          } >> "$GITHUB_STEP_SUMMARY"
