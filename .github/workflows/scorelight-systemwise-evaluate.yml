@@ -1,0 +1,46 @@
+name: "ScoreLight Accuracy - Whole-System OCR Evaluation"
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scorelight/scripts/evaluate_systems.py"
+      - ".github/workflows/scorelight-systemwise-evaluate.yml"
+permissions:
+  contents: read
+concurrency:
+  group: scorelight-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install OCR image dependencies and official Audiveris
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils python3-numpy python3-pil
+          python3 -c 'import numpy, PIL; print("Piano staff crop dependencies ready")'
+          curl -fLsS --retry 3 "https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb" -o "$RUNNER_TEMP/audiveris.deb"
+          dpkg-deb -x "$RUNNER_TEMP/audiveris.deb" "$RUNNER_TEMP/audiveris"
+          echo "AUDIVERIS_CLI=$RUNNER_TEMP/audiveris/opt/audiveris/bin/Audiveris" >> "$GITHUB_ENV"
+      - name: Recognize four complete systems on difficult score page 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="$(find scorelight/input -maxdepth 1 -type f -iname '*.pdf' -print -quit)"
+          if [[ -z "$input" ]]; then echo 'No existing PDF for test'; exit 0; fi
+          python3 scorelight/scripts/evaluate_systems.py "$input" "$AUDIVERIS_CLI" "$RUNNER_TEMP/systems" 3
+      - name: Upload recognized XML and coverage report (no PDF or scans)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorelight-systemwise-test
+          path: |
+            ${{ runner.temp }}/systems/system-report.json
+            ${{ runner.temp }}/systems/raw-systems/*.musicxml
+          retention-days: 1
+          if-no-files-found: ignore
