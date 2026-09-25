@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -233,6 +234,7 @@ def main() -> int:
     parser.add_argument("--test-install", action="store_true")
     parser.add_argument("--baseline-only", action="store_true")
     parser.add_argument("--test-conversion", action="store_true")
+    parser.add_argument("--test-bridge", action="store_true")
     parser.add_argument("--test-conversion-if-empty", action="store_true")
     args = parser.parse_args()
     if not args.audiveris.is_file():
@@ -250,7 +252,16 @@ def main() -> int:
     if args.test_install:
         print("Audiveris installed and launched successfully.")
         return 0
-    if args.test_conversion:
+    if args.test_bridge:
+        # A public-domain Schumann example is already part of Audiveris's
+        # official open-source test assets; commit ONLY the recognized output
+        # under a random in-app job ID, never the source PDF itself.
+        demo = official_public_test_pdf()
+        job_pdf = INPUT / ("pl-" + uuid.uuid4().hex + ".pdf")
+        demo.rename(job_pdf)
+        selected = [job_pdf]
+        print("Testing a full in-app result under " + job_pdf.stem)
+    elif args.test_conversion:
         selected = [official_public_test_pdf()]
     elif args.path:
         selected = [pdf_path(args.path)]

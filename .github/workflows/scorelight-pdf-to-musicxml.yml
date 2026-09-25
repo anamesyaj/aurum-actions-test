@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      test_bridge:
+        description: "Test full in-app publication using the official public Audiveris example"
+        required: false
+        default: false
+        type: boolean
       test_conversion:
         description: "Convert the official Audiveris test score end-to-end"
         required: false
@@ -85,6 +90,8 @@ jobs:
           MANUAL_PDF_PATH: ${{ inputs.pdf_path || '' }}
           INSTALL_ONLY: ${{ inputs.test_install || 'false' }}
           TEST_CONVERSION: ${{ inputs.test_conversion || 'false' }}
+          TEST_BRIDGE: ${{ inputs.test_bridge || 'false' }}
+          IS_BRIDGE_SMOKE_COMMIT: ${{ startsWith(github.event.head_commit.message, 'test(scorelight): in-app integration smoke') }}
           BEFORE_SHA: ${{ github.event.before || '' }}
           BASELINE_ONLY: ${{ inputs.baseline_only || 'false' }}
         run: |
@@ -93,7 +100,11 @@ jobs:
           mkdir -p "$output"
           extra=()
           if [[ "$BASELINE_ONLY" == "true" ]]; then extra+=(--baseline-only); fi
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$IS_BRIDGE_SMOKE_COMMIT" == "true" ]]; then
+            python3 scorelight/scripts/convert.py \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
+              --event manual --test-bridge
+          elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             python3 scorelight/scripts/convert.py \
               --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
               --event push --before "$BEFORE_SHA" --after "$GITHUB_SHA" \
@@ -102,6 +113,10 @@ jobs:
             python3 scorelight/scripts/convert.py \
               --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
               --event manual --test-install
+          elif [[ "$TEST_BRIDGE" == "true" ]]; then
+            python3 scorelight/scripts/convert.py \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
+              --event manual --test-bridge
           elif [[ "$TEST_CONVERSION" == "true" ]]; then
             python3 scorelight/scripts/convert.py \
               --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
