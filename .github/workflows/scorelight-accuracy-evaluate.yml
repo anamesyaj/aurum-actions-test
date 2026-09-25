@@ -26,6 +26,11 @@ jobs:
           curl -fLsS --retry 3 "https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb" -o "$RUNNER_TEMP/audiveris.deb"
           dpkg-deb -x "$RUNNER_TEMP/audiveris.deb" "$RUNNER_TEMP/audiveris"
           echo "AUDIVERIS_CLI=$RUNNER_TEMP/audiveris/opt/audiveris/bin/Audiveris" >> "$GITHUB_ENV"
+      - name: Install lightweight Poppler PDF page splitter
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends poppler-utils
       - name: Run page-by-page recognition on currently uploaded sample
         shell: bash
         run: |
