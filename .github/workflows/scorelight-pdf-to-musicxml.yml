@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      baseline_only:
+        description: "Disable experimental enhanced piano recognition (use standard Audiveris only)"
+        required: false
+        default: false
+        type: boolean
       test_conversion:
         description: "Convert the official Audiveris test score end-to-end"
         required: false
@@ -62,6 +67,14 @@ jobs:
           chmod +x "$launcher"
           echo "AUDIVERIS_CLI=$launcher" >> "$GITHUB_ENV"
 
+      - name: Install image and PDF tools for enhanced two-staff piano recognition
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends poppler-utils python3-numpy python3-pil
+          python3 -c 'import numpy, PIL; print("ScoreLight enhanced recognition tools ready")'
+
       - name: Check Audiveris and convert newly uploaded PDFs
         id: conversion
         shell: bash
@@ -70,26 +83,29 @@ jobs:
           INSTALL_ONLY: ${{ inputs.test_install || 'false' }}
           TEST_CONVERSION: ${{ inputs.test_conversion || 'false' }}
           BEFORE_SHA: ${{ github.event.before || '' }}
+          BASELINE_ONLY: ${{ inputs.baseline_only || 'false' }}
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/scorelight-results"
           mkdir -p "$output"
+          extra=()
+          if [[ "$BASELINE_ONLY" == "true" ]]; then extra+=(--baseline-only); fi
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             python3 scorelight/scripts/convert.py \
-              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
               --event push --before "$BEFORE_SHA" --after "$GITHUB_SHA" \
               --test-conversion-if-empty
           elif [[ "$INSTALL_ONLY" == "true" ]]; then
             python3 scorelight/scripts/convert.py \
-              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
               --event manual --test-install
           elif [[ "$TEST_CONVERSION" == "true" ]]; then
             python3 scorelight/scripts/convert.py \
-              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
               --event manual --test-conversion
           else
             python3 scorelight/scripts/convert.py \
-              --audiveris "$AUDIVERIS_CLI" --output "$output" \
+              --audiveris "$AUDIVERIS_CLI" --output "$output" "${extra[@]}" \
               --event manual --path "$MANUAL_PDF_PATH"
           fi
           if [[ -d "$output/musicxml" ]] && compgen -G "$output/musicxml/*.musicxml" >/dev/null; then

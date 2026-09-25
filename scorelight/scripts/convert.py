@@ -87,7 +87,33 @@ def extract_musicxml(path: Path) -> bytes:
         return archive.read(target)
 
 
-def convert_pdf(source: Path, audiveris: Path, out: Path) -> list[str]:
+def musicxml_coverage(raw: bytes) -> dict[str, int]:
+    """Diagnostic coverage only; note counts are NOT an accuracy percentage."""
+    root = ET.fromstring(raw)
+    if root.tag.rsplit("}", 1)[-1] != "score-partwise":
+        raise ValueError("Not partwise MusicXML")
+    parts = root.findall("part")
+    return {
+        "parts": len(parts),
+        "measures": max((len(p.findall("measure")) for p in parts), default=0),
+        "pitched_notes": sum(len(p.findall(".//note/pitch")) for p in parts),
+    }
+
+
+def enhanced_covers_baseline(baseline: dict, enhanced: dict) -> bool:
+    """Reject any proposed reconstruction that loses recognized coverage."""
+    return (
+        enhanced["parts"] == 1
+        and enhanced["measures"] >= baseline["measures"]
+        and enhanced["pitched_notes"] >= baseline["pitched_notes"]
+        and enhanced["measures"] > 0
+    )
+
+
+def convert_pdf(
+    source: Path, audiveris: Path, out: Path, enhance: bool = True
+) -> tuple[list[str], dict]:
+
     internal = out / "temporary" / source.stem
     internal.mkdir(parents=True, exist_ok=True)
     command = [
@@ -116,6 +142,7 @@ def convert_pdf(source: Path, audiveris: Path, out: Path) -> list[str]:
     if not candidates:
         raise RuntimeError("Audiveris did not export a MusicXML file.")
     results = []
+    baseline_xml = []
     for i, file in enumerate(candidates, start=1):
         if "META-INF" in file.parts:
             continue
@@ -133,11 +160,66 @@ def convert_pdf(source: Path, audiveris: Path, out: Path) -> list[str]:
         destination = out / "musicxml" / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(raw)
+        baseline_xml.append(raw)
         results.append(name)
         print("Ready for ScoreLight: " + name, flush=True)
     if not results:
         raise RuntimeError("The exported file did not contain readable partwise MusicXML.")
-    return results
+    baseline = {
+        "parts": sum(musicxml_coverage(xml)["parts"] for xml in baseline_xml),
+        "measures": max((musicxml_coverage(xml)["measures"] for xml in baseline_xml), default=0),
+        "pitched_notes": sum(musicxml_coverage(xml)["pitched_notes"] for xml in baseline_xml),
+    }
+    quality = {
+        "method": "standard Audiveris",
+        "baseline": baseline,
+        "preferred_musicxml": results[0],
+        "enhanced": None,
+        "warnings": [
+            "Automatic optical music recognition is not note-accurate by guarantee; "
+            "compare every page with the PDF."
+        ],
+    }
+    if enhance:
+        try:
+            from recognize_systems import process
+            improved_dir = out / "enhancement" / source.stem
+            improved_report = process(source, audiveris, improved_dir)
+            candidate = improved_dir / "enhanced.musicxml"
+            enhanced = musicxml_coverage(candidate.read_bytes())
+            # Refuse to silently make things worse even when the advanced OCR succeeded.
+            if not enhanced_covers_baseline(baseline, enhanced):
+                raise ValueError(
+                    f"Enhanced scan failed coverage gate: {enhanced} vs {baseline}."
+                )
+            safe = re.sub("[^a-zA-Z0-9_-]+", "-", source.stem).strip("-")[:60] or "score"
+            better_name = safe + "-ENHANCED-REVIEW.musicxml"
+            (out / "musicxml" / better_name).write_bytes(candidate.read_bytes())
+            quality.update({
+                "method": "system-wise two-staff reconstruction",
+                "enhanced": enhanced,
+                "preferred_musicxml": better_name,
+                "system_report": {
+                    "source_pages": improved_report["source_pages"],
+                    "detected_systems": improved_report["detected_systems"],
+                },
+            })
+            quality["warnings"].extend(improved_report["warnings"])
+            results.insert(0, better_name)
+            print(
+                f"ENHANCED PDF RESULT: {enhanced['measures']} measures, "
+                f"{enhanced['pitched_notes']} pitches. Still requires note review.",
+                flush=True,
+            )
+        except (ImportError, OSError, ValueError, RuntimeError,
+                subprocess.TimeoutExpired) as exc:
+            quality["warnings"].append(
+                "Enhanced piano recognition unavailable or failed validation: "
+                + str(exc)[:320] + "; standard Audiveris output preserved."
+            )
+            print("Enhanced piano mode skipped; baseline MusicXML retained: "
+                  + str(exc)[:300], flush=True)
+    return results, quality
 
 
 def main() -> int:
@@ -149,6 +231,7 @@ def main() -> int:
     parser.add_argument("--before", default="")
     parser.add_argument("--after", default="")
     parser.add_argument("--test-install", action="store_true")
+    parser.add_argument("--baseline-only", action="store_true")
     parser.add_argument("--test-conversion", action="store_true")
     parser.add_argument("--test-conversion-if-empty", action="store_true")
     args = parser.parse_args()
@@ -192,9 +275,14 @@ def main() -> int:
         ),
     }
     for source in selected:
+        outputs, quality = convert_pdf(
+            source, args.audiveris, args.output, enhance=not args.baseline_only,
+        )
         manifest["converted"].append({
             "pdf": source.name,
-            "musicxml": convert_pdf(source, args.audiveris, args.output),
+            "musicxml": outputs,
+            "preferred_musicxml": quality["preferred_musicxml"],
+            "quality": quality,
         })
     report = args.output / "musicxml" / "conversion-report.json"
     report.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

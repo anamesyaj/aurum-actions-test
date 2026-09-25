@@ -19,6 +19,25 @@ PuddleLoom Studio does playback, animations, instruments and MP4 export.
    MusicXML file. Review the notes against the original PDF, then
    choose instruments, play or export the animated score.
 
+### Enhanced piano recognition (automatically attempted)
+
+The converter now first produces the ordinary Audiveris MusicXML and then
+attempts a second pass that recognizes each **complete two-staff piano system**
+separately, retaining the upper/lower staff relationship while stitching the
+measures into one piano part. When the enhanced candidate passes structural
+checks and has at least as many detected notes and measures as the baseline,
+the ZIP includes a clearly labeled `*-ENHANCED-REVIEW.musicxml` alongside the
+original baseline MusicXML. The `conversion-report.json` identifies the
+preferred file, recognized pages and systems, coverage counts and warnings.
+
+**An increased note count is not proof of correct notes.** Incorrect pitches,
+durations, ties, beats and missing systems can remain. The enhanced MusicXML
+is explicitly marked for human comparison with the original score.
+The converter keeps the baseline when system-wise OCR fails and never
+pretends to repair an unrecognized score. For non-piano scores, the normal
+Audiveris output remains available. A manual run offers a baseline-only
+switch.
+
 ### Automatic two-hour PDF cleanup
 
 The [cleanup workflow](../../actions/workflows/scorelight-pdf-cleanup.yml)
