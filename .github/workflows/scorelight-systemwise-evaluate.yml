@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - "scorelight/scripts/evaluate_systems.py"
+      - "scorelight/scripts/recognize_systems.py"
       - ".github/workflows/scorelight-systemwise-evaluate.yml"
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
           set -euo pipefail
           input="$(find scorelight/input -maxdepth 1 -type f -iname '*.pdf' -print -quit)"
           if [[ -z "$input" ]]; then echo 'No existing PDF for test'; exit 0; fi
-          python3 scorelight/scripts/evaluate_systems.py "$input" "$AUDIVERIS_CLI" "$RUNNER_TEMP/systems" 3
+          python3 scorelight/scripts/recognize_systems.py "$input" "$AUDIVERIS_CLI" "$RUNNER_TEMP/systems" --title "Kiss The Rain" --composer "Yiruma" --tempo 62 --min-measures 60
       - name: Upload recognized XML and coverage report (no PDF or scans)
         if: success()
         uses: actions/upload-artifact@v4
@@ -41,6 +42,7 @@ jobs:
           name: scorelight-systemwise-test
           path: |
             ${{ runner.temp }}/systems/system-report.json
+            ${{ runner.temp }}/systems/enhanced.musicxml
             ${{ runner.temp }}/systems/raw-systems/*.musicxml
           retention-days: 1
           if-no-files-found: ignore
