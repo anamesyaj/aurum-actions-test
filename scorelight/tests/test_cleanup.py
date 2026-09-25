@@ -51,6 +51,22 @@ class RetentionTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.expired_pdfs(self.root, now=NOW, min_age=7199)
 
+    def test_result_pair_cleaned_only_after_24_hours(self):
+        folder=self.root / "scorelight" / "results"
+        folder.mkdir(parents=True)
+        uid="pl-"+"a"*32
+        (folder/(uid+".musicxml")).write_text("<score-partwise/>")
+        (folder/(uid+".json")).write_text('{"status":"ready"}')
+        (folder/"README.md").write_text("Keep this")
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-m", "old published results", age=86400)
+        self.assertEqual(len(MODULE.expired_results(self.root,now=NOW-1)),0)
+        found=MODULE.expired_results(self.root,now=NOW)
+        self.assertEqual([e["path"] for e in found],[
+            "scorelight/results/"+uid+".json",
+            "scorelight/results/"+uid+".musicxml",
+        ])
+
     def test_updated_pdf_gets_fresh_retention(self):
         (self.folder / "old score.pdf").write_bytes(b"%PDF-1.4 updated")
         git(self.root, "add", ".")

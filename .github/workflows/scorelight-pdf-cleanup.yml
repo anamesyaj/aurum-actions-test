@@ -1,4 +1,4 @@
-name: "ScoreLight - Clean PDFs every 2 hours"
+name: "ScoreLight - Clean temporary files every 2 hours"
 
 on:
   schedule:
@@ -39,7 +39,7 @@ jobs:
       - name: Test two-hour retention safeguards
         run: python3 -m unittest discover -s scorelight/tests -p test_cleanup.py -v
 
-      - name: Find PDFs uploaded at least two hours ago
+      - name: Find PDFs older than 2h and MusicXML results older than 24h
         id: scan
         shell: bash
         run: |
@@ -50,7 +50,7 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
 
-      - name: Remove expired PDFs from main
+      - name: Remove expired PDF inputs and MusicXML results from main
         if: steps.scan.outputs.count != '0' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run))
         shell: bash
         env:
@@ -80,7 +80,7 @@ jobs:
         run: |
           {
             echo "## ScoreLight automatic PDF cleanup"
-            echo "Found **$COUNT** PDF(s) at least two hours old."
+            echo "Found **$COUNT** temporary file(s) past their retention cutoff (PDF 2 hours; MusicXML/report 24 hours)."
             if [[ "$GITHUB_EVENT_NAME" == "push" || ( "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$MANUAL_DRY_RUN" == "true" ) ]]; then
               echo "Dry run: no files deleted."
             elif [[ "$COUNT" == "0" ]]; then
@@ -91,5 +91,5 @@ jobs:
             echo ""
             echo "Runs every two hours, at 00:17, 02:17, etc. UTC. GitHub may delay scheduled jobs."
             echo ""
-            echo "**Old PDF contents remain in public Git history after deletion.** MusicXML artifacts expire independently after one day."
+            echo "**PDF and MusicXML contents remain in public Git history after branch deletion.** ZIP artifacts expire independently after one day."
           } >> "$GITHUB_STEP_SUMMARY"

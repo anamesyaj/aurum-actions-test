@@ -7,6 +7,7 @@ Public Git history is unaffected by removal from the current branch.
 from __future__ import annotations
 import argparse
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -46,15 +47,42 @@ def expired_pdfs(repo: Path, now: int | None = None,
             result.append({"path": name, "age_seconds": age})
     return sorted(result, key=lambda item: item["path"])
 
+def expired_results(repo: Path, now: int | None = None) -> list[dict]:
+    """Remove temporary public branch files after 24h; Git history stays public."""
+    root = repo.resolve()
+    directory = root / "scorelight" / "results"
+    now = int(time.time()) if now is None else int(now)
+    retained_seconds = 24 * 60 * 60
+    tracked = git(root, "ls-files", "-z", "--", "scorelight/results/")
+    found = []
+    for raw in tracked.split(b"\\0"):
+        if not raw:
+            continue
+        relative = Path(raw.decode("utf-8", "surrogateescape"))
+        if relative.parent != Path("scorelight/results") or not re.fullmatch(
+            r"pl-[0-9a-f]{32}\\.(musicxml|json)", relative.name
+        ):
+            continue
+        file = root / relative
+        if file.is_symlink() or not file.is_file() or file.resolve().parent != directory:
+            continue
+        stamp = git(root, "log", "-1", "--format=%ct", "--", str(relative)).strip()
+        if stamp and now-int(stamp) >= retained_seconds:
+            found.append({"path": str(relative), "age_seconds": now-int(stamp)})
+    return sorted(found, key=lambda item: item["path"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    found = expired_pdfs(args.repo)
+    pdfs = expired_pdfs(args.repo)
+    results = expired_results(args.repo)
+    found = pdfs + results
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(found, indent=2) + "\n", encoding="utf-8")
-    print(f"Eligible ScoreLight PDFs aged >= 2h: {len(found)}")
+    print(f"Eligible ScoreLight PDFs >=2h: {len(pdfs)}; temporary MusicXML/report files >=24h: {len(results)}")
     for item in found:
         print("  " + item["path"])
     print("Git history is still public after files are removed from main.")
