@@ -48,6 +48,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check enhanced-score coverage safeguards
+        run: python3 -m unittest discover -s scorelight/tests -p test_quality.py -v
+
       - name: Unpack official Audiveris (no apt-get)
         shell: bash
         run: |
