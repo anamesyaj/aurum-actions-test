@@ -19,6 +19,22 @@ PuddleLoom Studio does playback, animations, instruments and MP4 export.
    MusicXML file. Review the notes against the original PDF, then
    choose instruments, play or export the animated score.
 
+### Background PuddleLoom imports (no routine GitHub visit)
+
+PuddleLoom's ScoreLight in-app bridge creates uniquely named files under
+`scorelight/input/pl-<random-id>.pdf`, triggering this existing workflow.
+When conversion succeeds, the `publish_result.py` script writes only the
+preferred MusicXML and a short status report to `scorelight/results/`.
+PuddleLoom polls that result and loads the MusicXML directly into its score
+reviewer without visiting GitHub. Ordinary manual PDF uploads continue to
+use the downloadable Actions ZIP.
+
+**All PDFs and published MusicXML in this public repo remain in Git history
+even if the scheduled cleaner later removes them from the current branch.**
+The in-app bridge requires an owner-configured Worker secret or a narrowly
+scoped GitHub token supplied by its owner. It cannot anonymously write to
+GitHub or process private copyrighted PDFs securely.
+
 ### Enhanced piano recognition (automatically attempted)
 
 The converter now first produces the ordinary Audiveris MusicXML and then

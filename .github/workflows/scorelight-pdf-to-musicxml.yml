@@ -30,7 +30,7 @@ on:
       - ".github/workflows/scorelight-pdf-to-musicxml.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: scorelight-${{ github.ref }}
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Check enhanced-score coverage safeguards
         run: python3 -m unittest discover -s scorelight/tests -p test_quality.py -v
@@ -116,6 +116,40 @@ jobs:
           else
             echo "has_results=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Check safe in-app result publisher
+        if: steps.conversion.outputs.has_results == 'true'
+        run: python3 -m unittest discover -s scorelight/tests -p test_publish.py -v
+
+      - name: Publish background in-app result for direct PuddleLoom import
+        if: steps.conversion.outputs.has_results == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scorelight/scripts/publish_result.py "$RUNNER_TEMP/scorelight-results"
+          if [[ ! -d scorelight/results ]]; then
+            echo 'Manual test or ordinary GitHub upload; use the standard artifact.'
+            exit 0
+          fi
+          git add -- scorelight/results/
+          if git diff --cached --quiet; then
+            echo 'No new in-app result to publish.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore(scorelight): publish temporary in-app conversion result"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              echo 'The in-app ScoreLight result is ready for automatic import.'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo '::error::Could not publish the in-app result after three attempts.'
+          exit 1
 
       - name: Upload converted MusicXML ZIP (one-day retention)
         if: steps.conversion.outputs.has_results == 'true'
