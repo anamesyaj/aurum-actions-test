@@ -19,6 +19,27 @@ PuddleLoom Studio does playback, animations, instruments and MP4 export.
    MusicXML file. Review the notes against the original PDF, then
    choose instruments, play or export the animated score.
 
+### Automatic two-hour PDF cleanup
+
+The [cleanup workflow](../../actions/workflows/scorelight-pdf-cleanup.yml)
+runs every **two hours** and removes PDFs once they have been uploaded for
+at least **two hours**. Depending on the scheduled scan and GitHub delays,
+removal generally happens two to four hours after upload. The workflow
+runs unit tests and shares a concurrency lock with the converter so it
+doesn't remove inputs during conversion.
+
+It never deletes the input README, converter source or MusicXML downloads.
+Converted MusicXML artifacts still expire after **one day**.
+
+You can run the cleaner manually from Actions. Its manual default is
+a **dry run**, showing what it would delete. Disable dry_run to remove
+eligible PDFs immediately.
+
+**This is repository housekeeping, not secure erasure.** Uploaded PDFs
+remain in public Git history even after automated deletion from main.
+Only upload files you have permission to publish. If conversion fails,
+retrieve or re-upload the PDF before its two-hour retention period expires.
+
 ### Re-convert a PDF already uploaded here
 
 Open Actions → ScoreLight - PDF to MusicXML → Run workflow. Enter its

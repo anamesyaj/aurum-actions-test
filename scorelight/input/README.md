@@ -14,3 +14,8 @@ it in Android Files and import the MusicXML into PuddleLoom ScoreLight.
 
 Only publish PDFs that you have the right to share publicly.
 Limit: 15 MB per PDF; up to 4 new PDFs per commit.
+
+Uploaded PDF files are automatically removed from the current main branch
+once they are at least two hours old, during a scan every two hours.
+Conversion artifacts remain available separately for one day.
+**Deleting PDFs from main does NOT erase their public Git history.**

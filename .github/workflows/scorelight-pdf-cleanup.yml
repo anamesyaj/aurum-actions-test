@@ -1,0 +1,95 @@
+name: "ScoreLight - Clean PDFs every 2 hours"
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview without deleting uploaded PDFs"
+        type: boolean
+        required: false
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - "scorelight/maintenance/**"
+      - "scorelight/tests/test_cleanup.py"
+      - ".github/workflows/scorelight-pdf-cleanup.yml"
+
+permissions:
+  contents: write
+
+# Matches the converter's concurrency group; don't clean mid-conversion.
+concurrency:
+  group: scorelight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  clean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout input file history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Test two-hour retention safeguards
+        run: python3 -m unittest discover -s scorelight/tests -p test_cleanup.py -v
+
+      - name: Find PDFs uploaded at least two hours ago
+        id: scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/scorelight-expired.json"
+          python3 scorelight/maintenance/cleanup.py --repo . --output "$manifest"
+          count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$manifest")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+
+      - name: Remove expired PDFs from main
+        if: steps.scan.outputs.count != '0' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run))
+        shell: bash
+        env:
+          MANIFEST: ${{ steps.scan.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          selected=json.loads(Path(os.environ["MANIFEST"]).read_text(encoding="utf-8"))
+          paths=[entry["path"] for entry in selected]
+          if paths: subprocess.run(["git", "rm", "--", *paths], check=True)
+          PY
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(scorelight): clean PDF uploads older than two hours"
+            git push origin HEAD:main
+          fi
+
+      - name: Report scan
+        if: success()
+        env:
+          COUNT: ${{ steps.scan.outputs.count }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        shell: bash
+        run: |
+          {
+            echo "## ScoreLight automatic PDF cleanup"
+            echo "Found **$COUNT** PDF(s) at least two hours old."
+            if [[ "$GITHUB_EVENT_NAME" == "push" || ( "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$MANUAL_DRY_RUN" == "true" ) ]]; then
+              echo "Dry run: no files deleted."
+            elif [[ "$COUNT" == "0" ]]; then
+              echo "Nothing to delete."
+            else
+              echo "Deleted eligible PDFs from the main branch."
+            fi
+            echo ""
+            echo "Runs every two hours, at 00:17, 02:17, etc. UTC. GitHub may delay scheduled jobs."
+            echo ""
+            echo "**Old PDF contents remain in public Git history after deletion.** MusicXML artifacts expire independently after one day."
+          } >> "$GITHUB_STEP_SUMMARY"
