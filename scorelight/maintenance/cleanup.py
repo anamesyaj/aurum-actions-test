@@ -55,12 +55,12 @@ def expired_results(repo: Path, now: int | None = None) -> list[dict]:
     retained_seconds = 24 * 60 * 60
     tracked = git(root, "ls-files", "-z", "--", "scorelight/results/")
     found = []
-    for raw in tracked.split(b"\\0"):
+    for raw in tracked.split(bytes([0])):
         if not raw:
             continue
         relative = Path(raw.decode("utf-8", "surrogateescape"))
         if relative.parent != Path("scorelight/results") or not re.fullmatch(
-            r"pl-[0-9a-f]{32}\\.(musicxml|json)", relative.name
+            r"pl-[0-9a-f]{32}[.](musicxml|json)", relative.name
         ):
             continue
         file = root / relative
