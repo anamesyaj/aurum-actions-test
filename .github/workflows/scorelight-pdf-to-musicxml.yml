@@ -91,7 +91,7 @@ jobs:
           INSTALL_ONLY: ${{ inputs.test_install || 'false' }}
           TEST_CONVERSION: ${{ inputs.test_conversion || 'false' }}
           TEST_BRIDGE: ${{ inputs.test_bridge || 'false' }}
-          IS_BRIDGE_SMOKE_COMMIT: ${{ startsWith(github.event.head_commit.message, 'test(scorelight): in-app integration smoke') }}
+          IS_BRIDGE_SMOKE_COMMIT: "${{ startsWith(github.event.head_commit.message, 'test(scorelight): in-app integration smoke') }}"
           BEFORE_SHA: ${{ github.event.before || '' }}
           BASELINE_ONLY: ${{ inputs.baseline_only || 'false' }}
         run: |
