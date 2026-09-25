@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -48,6 +49,21 @@ def new_pdfs(before: str, after: str) -> list[Path]:
         if encoded and os.fsdecode(encoded).lower().endswith(".pdf"):
             paths.append(pdf_path(os.fsdecode(encoded)))
     return paths
+
+
+
+def official_public_test_pdf() -> Path:
+    """Download Audiveris's own public example onto the ephemeral runner only."""
+    url = ("https://raw.githubusercontent.com/Audiveris/audiveris/master/"
+           "data/examples/Dichterliebe01.pdf")
+    destination = INPUT / "audiveris-public-demo.pdf"
+    print("Downloading official Audiveris example for an end-to-end test…")
+    with urllib.request.urlopen(url, timeout=40) as response:
+        data = response.read(700_000)
+    if not data.lstrip().startswith(b"%PDF-") or len(data) > 600_000:
+        raise RuntimeError("Audiveris example download is not a small valid PDF.")
+    destination.write_bytes(data)
+    return pdf_path("scorelight/input/audiveris-public-demo.pdf")
 
 
 def extract_musicxml(path: Path) -> bytes:
@@ -133,6 +149,8 @@ def main() -> int:
     parser.add_argument("--before", default="")
     parser.add_argument("--after", default="")
     parser.add_argument("--test-install", action="store_true")
+    parser.add_argument("--test-conversion", action="store_true")
+    parser.add_argument("--test-conversion-if-empty", action="store_true")
     args = parser.parse_args()
     if not args.audiveris.is_file():
         raise RuntimeError("The official Audiveris launcher is missing.")
@@ -149,19 +167,21 @@ def main() -> int:
     if args.test_install:
         print("Audiveris installed and launched successfully.")
         return 0
-    if args.path:
+    if args.test_conversion:
+        selected = [official_public_test_pdf()]
+    elif args.path:
         selected = [pdf_path(args.path)]
     elif args.event == "push":
         selected = new_pdfs(args.before, args.after)
+        if not selected and args.test_conversion_if_empty:
+            selected = [official_public_test_pdf()]
     else:
-        raise ValueError(
-            "Manual run: enter the existing PDF path or select test_install."
-        )
+        raise ValueError("Manual run: provide pdf_path or select a test.")
     if not selected:
         if args.event == "push":
-            print("No new PDFs; installation smoke test passed.")
+            print("No changed PDFs; Audiveris installation check passed.")
             return 0
-        raise ValueError("No PDF selected.")
+        raise ValueError("No score PDF selected.")
     if len(selected) > 4:
         raise ValueError("Convert at most four PDFs per workflow run.")
     manifest = {
