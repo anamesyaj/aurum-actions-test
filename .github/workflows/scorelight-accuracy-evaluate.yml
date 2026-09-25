@@ -1,0 +1,47 @@
+name: "ScoreLight Accuracy - Per-page Evaluation"
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scorelight/scripts/evaluate_pages.py"
+      - ".github/workflows/scorelight-accuracy-evaluate.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: scorelight-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  pagewise:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Unpack official Audiveris
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 "https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb" -o "$RUNNER_TEMP/audiveris.deb"
+          dpkg-deb -x "$RUNNER_TEMP/audiveris.deb" "$RUNNER_TEMP/audiveris"
+          echo "AUDIVERIS_CLI=$RUNNER_TEMP/audiveris/opt/audiveris/bin/Audiveris" >> "$GITHUB_ENV"
+      - name: Run page-by-page recognition on currently uploaded sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="$(find scorelight/input -maxdepth 1 -type f -iname '*.pdf' -print -quit)"
+          if [[ -z "$input" ]]; then
+            echo 'No score available before scheduled PDF cleanup'; exit 0
+          fi
+          python3 scorelight/scripts/evaluate_pages.py "$input" "$AUDIVERIS_CLI" "$RUNNER_TEMP/pagewise"
+      - name: Upload diagnostic MusicXML and report only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorelight-pagewise-diagnostic
+          path: |
+            ${{ runner.temp }}/pagewise/page-coverage-report.json
+            ${{ runner.temp }}/pagewise/raw-pages/*.musicxml
+          retention-days: 1
+          if-no-files-found: ignore
