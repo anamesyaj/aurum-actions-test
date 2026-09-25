@@ -1,0 +1,14 @@
+{
+  "jobId": "pl-b39a07a7c85243d0a7ea09106ba730f8",
+  "status": "ready",
+  "method": "standard Audiveris",
+  "enhanced": false,
+  "measures": 27,
+  "pitchedNotes": 405,
+  "warnings": [
+    "Automatic optical music recognition is not note-accurate by guarantee; compare every page with the PDF.",
+    "Enhanced piano recognition unavailable or failed validation: Unexpected 9 staves: no safe grand-staff pairs; standard Audiveris output preserved."
+  ],
+  "finishedAt": "2026-09-25T17:20:02.657417+00:00",
+  "privacy": "PUBLIC_GITHUB_HISTORY"
+}
